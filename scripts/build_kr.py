@@ -18,6 +18,7 @@ import io
 import json
 import os
 import re
+import signal
 import sys
 import time
 from datetime import datetime, timezone, timedelta
@@ -118,13 +119,24 @@ class Blocked(Exception):
     pass
 
 
+def _alarm(signum, frame):
+    raise TimeoutError("응답이 25초 넘게 없어요")
+
+
+signal.signal(signal.SIGALRM, _alarm)
+
+
 def call(url, params, tries=4):
     for t in range(tries):
         try:
-            res = session.get(url, params=params, timeout=15)
-            res.raise_for_status()
-            data = res.json()["results"]
-        except (requests.ConnectionError, requests.Timeout) as e:
+            signal.alarm(25)          # 한 번 호출이 25초를 넘으면 끊기 (응답을 질질 끄는 경우 대비)
+            try:
+                res = session.get(url, params=params, timeout=(6, 12))
+                res.raise_for_status()
+                data = res.json()["results"]
+            finally:
+                signal.alarm(0)
+        except (requests.ConnectionError, requests.Timeout, TimeoutError) as e:
             if t == tries - 1:
                 raise Blocked(str(e))
             time.sleep(3 * (t + 1))
@@ -163,6 +175,7 @@ def coord(codes):
 
 def preflight():
     """해외 서버(GitHub Actions)에서 막히는지 먼저 한 번 확인"""
+    print("도로명주소 API 연결 확인 중… (최대 1분)", flush=True)
     try:
         code, msg, _ = call(SEARCH_URL, {"confmKey": SEARCH_KEY, "currentPage": 1, "countPerPage": 1,
                                          "keyword": "세종대로 110", "resultType": "json"}, tries=2)
@@ -216,9 +229,10 @@ def main():
             if changed:
                 cache[k] = c
                 done += 1
+                if done % 10 == 0:
+                    print(f"  … {done:,}개 처리", flush=True)
                 if done % 200 == 0:
                     json.dump(cache, open(CACHE_PATH, "w", encoding="utf-8"), ensure_ascii=False)
-                    print(f"  … {done:,}개 처리")
                 if LIMIT and done >= LIMIT:
                     print(f"LIMIT {LIMIT}개에서 멈춰요.")
                     break
