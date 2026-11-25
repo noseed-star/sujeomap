@@ -35,7 +35,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase || true
           git add -A data/sbiz data/chains.json || true
           git commit -m "data: 상가정보 갱신 (${{ inputs.sido_cd }})" || echo "바뀐 내용 없음"
-          git push
+                    for i in 1 2 3; do
+            git pull --rebase && git push && break
+            echo "다시 시도해요 ($i)"; sleep 5
+          done
