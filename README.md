@@ -5,6 +5,8 @@
 - 지도: MapLibre + OpenFreeMap (키 필요 없음, OpenStreetMap 기반)
 - 가게·메뉴: 행정안전부 착한가격업소 공공데이터
 - 주소 → 좌표: 도로명주소 검색 API + 좌표제공 검색 API (business.juso.go.kr)
+- 가게 찾기·체인점 위치: 소상공인시장진흥공단 상가(상권)정보 API
+- 이용자 제보·가격 확인: Supabase (무료 플랜)
 
 ## 폴더 구조
 
@@ -15,8 +17,14 @@ data/raw/                      ← 착한가격업소 CSV를 여기에 올려요
 data/kr.json                   지도에 쓰는 데이터 (자동 생성)
 data/kr_report.json            처리 결과 요약 (자동 생성)
 data/cache/geocode.json        찾은 주소·좌표 저장 (자동 생성, 다음 실행 때 재사용)
-scripts/build_kr.py            데이터 만드는 스크립트
-.github/workflows/build-kr.yml GitHub에서 스크립트를 실행하는 설정
+data/sbiz/                     상가정보 음식점 목록 (시군구별, 제보할 때 가게 찾기용 · 자동 생성)
+data/chains.json               체인 가격표와 맞는 매장 (지도에 표시 · 자동 생성)
+data/brands.csv                체인 가격표 (직접 관리: active=Y 인 줄만 지도에 나가요)
+config.js                      Supabase 주소와 공개 키
+supabase/schema.sql            제보 테이블 만드는 SQL
+scripts/build_kr.py            착한가격업소 데이터 만드는 스크립트
+scripts/build_sbiz.py          상가정보 데이터 만드는 스크립트
+.github/workflows/             GitHub에서 스크립트를 실행하는 설정 (build-kr, build-sbiz)
 ```
 
 ## 처음 한 번 설정
@@ -40,6 +48,22 @@ Actions 탭 → 왼쪽 **build-kr** → **Run workflow**
 
 - 좌표 키가 없을 때: 주소 코드 찾기까지만 하고 끝나요. 좌표 키를 등록한 뒤 다시 실행하면 이미 찾은 주소는 건너뛰고 좌표만 붙여요.
 - 결과 확인: Actions 실행 화면의 '한국 데이터 만들기' 로그 마지막 부분, 또는 `data/kr_report.json`
+
+## 이용자 제보 켜기 (Supabase)
+
+1. supabase.com 가입 → New project (이름 sujeomap, 지역 Northeast Asia (Seoul), DB 비밀번호는 따로 보관)
+2. 왼쪽 SQL Editor → New query → `supabase/schema.sql` 내용을 전부 붙여넣고 Run
+3. Project Settings → API (또는 API Keys) 에서 Project URL 과 anon / publishable 키를 복사
+4. 저장소의 `config.js` 를 열어 두 값을 넣고 Commit (service_role / secret 키는 절대 넣지 마세요)
+
+제보가 들어오면 Supabase → Table Editor → submissions 에서 status 를 `approved`(반영) 또는 `rejected`(거절)로 바꾸면 돼요. '이 가격 맞아요' 확인은 바로 반영돼요. config.js 가 비어 있으면 제보는 이용자 기기에만 저장돼요.
+
+## 상가정보 받기 (가게 찾기 · 체인점)
+
+1. data.go.kr 에서 '소상공인시장진흥공단_상가(상권)정보' 오픈 API(15012005) 활용신청 → 마이페이지에서 일반 인증키(Decoding) 복사
+2. Secrets 에 `DATA_GO_KR_KEY` 로 등록
+3. Actions → build-sbiz → Run workflow (sido_cd 11 = 서울)
+4. 체인점을 지도에 올리려면 `data/brands.csv` 에 브랜드·메뉴·가격·출처를 넣고 active 를 Y 로 바꾼 뒤 build-sbiz 를 다시 실행
 
 ## 분기마다 할 일
 

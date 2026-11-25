@@ -213,6 +213,19 @@ textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px
 .ext a{flex:1;text-align:center;text-decoration:none;font-size:12.5px;font-weight:700;padding:9px 0;border-radius:10px;background:#f1f3f5;color:var(--ink)}
 .addr{font-size:12.5px;color:var(--sub);margin-top:2px}
 .src{font-size:11.5px;color:var(--sub);margin-top:10px;line-height:1.5}
+.bar .pill.rep{flex:0 0 auto;padding:12px 14px}
+.fl{display:block;font-size:12.5px;font-weight:700;color:var(--sub);margin:12px 0 5px}
+.fi,select{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px 12px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}
+.link{border:0;background:none;color:var(--sub);font-size:12.5px;text-decoration:underline;margin-top:12px;padding:4px 0}
+.cf{display:flex;align-items:center;gap:6px;margin-top:4px}
+.cf button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:700;color:var(--brand)}
+.badge.u{background:#e8f6ef;color:#157a52}
+#pick{position:absolute;inset:0;z-index:650;pointer-events:none;display:none}
+#pick.on{display:block}
+#pick .cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);font-size:38px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.3))}
+#pick .pbar{position:absolute;left:12px;right:12px;bottom:16px;background:#fff;border-radius:16px;padding:12px;box-shadow:0 2px 12px rgba(0,0,0,.18);pointer-events:auto}
+#pick .pbar p{margin:0 0 10px;font-size:13px;text-align:center}
+.srcchip{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:#eef0f8;color:var(--brand)}
 </style>
 </head>
 <body>
@@ -242,6 +255,7 @@ textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px
 
   <div class="bar">
     <button class="pill loc" id="locBtn" aria-label="내 위치">◎</button>
+    <button class="pill rep" id="reportBtn">＋ 제보</button>
     <button class="pill dark" id="listBtn">이 지역 목록</button>
   </div>
 
@@ -268,6 +282,9 @@ textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px
   </section>
 
   <section class="sheet" id="detailSheet"><div class="grab"></div><div id="detailBody"></div></section>
+  <section class="sheet" id="reportSheet"><div class="grab"></div><div id="reportBody"></div></section>
+  <section class="sheet" id="priceSheet"><div class="grab"></div><div id="priceBody"></div></section>
+  <div id="pick"><div class="cross">📍</div><div class="pbar"><p>지도를 움직여 핀을 가게 위치에 맞춰 주세요</p><div class="rowbtn" style="margin-top:0"><button class="btn ghost" id="pickNo">취소</button><button class="btn" id="pickOk">이 위치로 정하기</button></div></div></div>
   <section class="sheet" id="reviewSheet"><div class="grab"></div><div id="reviewBody"></div></section>
   <section id="my"></section>
   <div class="unlock" id="unlock"><div class="box"><img id="unImg" src="" alt=""><h4 id="unTitle"></h4><p id="unDesc"></p><div class="rowbtn" style="margin-top:0"><button class="btn ghost" id="unLater">나중에</button><button class="btn" id="unWear">지금 입기</button></div></div></div>
@@ -275,6 +292,7 @@ textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px
   <div class="toast" id="toast"></div>
 </div>
 
+<script src="config.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 const $=s=>document.querySelector(s);
@@ -304,12 +322,18 @@ const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 /* ---------- data ---------- */
 let SHOPS=[], BYID={}, META=null;
 async function loadData(){
+  SHOPS=[];META=null;
   try{
     const r=await fetch('data/kr.json',{cache:'no-cache'});
-    if(!r.ok)throw new Error(r.status);
-    const j=await r.json();META=j.meta;
-    SHOPS=j.shops.map(a=>({id:a[0],n:a[1],c:CATS[a[2]]?a[2]:'기타요식업',sido:a[3],sgg:a[4],addr:a[5],lat:a[6],lng:a[7],menus:a[8].map(m=>({n:m[0],p:m[1]}))}));
-  }catch(e){SHOPS=[];META=null}
+    if(r.ok){const j=await r.json();META=j.meta;const bd=(META&&META.base_date)||'';
+      j.shops.forEach(a=>SHOPS.push({id:a[0],n:a[1],c:CATS[a[2]]?a[2]:'기타요식업',sido:a[3],sgg:a[4],addr:a[5],lat:a[6],lng:a[7],src:'gov',menus:a[8].map(m=>({n:m[0],p:m[1],d:bd,src:'gov'}))}))}
+  }catch(e){}
+  try{
+    const r=await fetch('data/chains.json',{cache:'no-cache'});
+    if(r.ok){const j=await r.json();(j.shops||[]).forEach(a=>SHOPS.push({id:a[0],n:a[1],c:CATS[a[2]]?a[2]:'기타요식업',sido:a[3],sgg:a[4],addr:a[5],lat:a[6],lng:a[7],src:'chain',srcUrl:a[9],menus:a[8].map(m=>({n:m[0],p:m[1],d:a[10]||'',src:'chain'}))}))}
+  }catch(e){}
+  BYID={};SHOPS.forEach(s=>BYID[s.id]=s);
+  applyReports(await loadReports());
   BYID={};SHOPS.forEach(s=>BYID[s.id]=s);
   if(!SHOPS.length){$('#banner').innerHTML='<b>아직 지도에 올라간 가게가 없어요.</b><br>GitHub 저장소 → Actions → build-kr 를 실행하면 착한가격업소 데이터가 채워져요. (좌표제공 API 키가 등록돼야 지도에 표시돼요)';$('#banner').classList.add('on')}
 }
@@ -429,16 +453,19 @@ function openDetail(s){
   const q=encodeURIComponent(s.n+' '+s.addr.replace(/\(.*?\)/g,'').split(',')[0]);
   const base=META&&META.base_date?META.base_date.replace(/-/g,'.'):'';
   $('#detailBody').innerHTML=`<h2>${esc(s.n)}</h2>
-   <div class="desc" style="margin:2px 0 0">${CATS[s.c][1]} ${CATS[s.c][0]} · <span class="tag g" style="font-size:11px">착한가격업소</span></div>
+   <div class="desc" style="margin:2px 0 0">${CATS[s.c][1]} ${CATS[s.c][0]} · <span class="srcchip">${s.src==='gov'?'착한가격업소':s.src==='chain'?'체인점':'이용자 제보'}</span></div>
    <div class="addr">${esc(s.addr)}</div>
    <div class="sec" style="margin-top:12px">메뉴 · 내 예산 ${rangeText()}</div>
-   ${menus.map(m=>{const inn=m.p>=st.min&&m.p<=st.max;const diff=m.p>st.max?`+${wonFull(m.p-st.max)} 초과`:'최소 예산보다 저렴';
-     return `<div class="menu ${inn?'':'out'}"><div><div class="mn">${esc(m.n)}${inn?'<span class="badge in">예산 안</span>':`<span class="badge ov">${diff}</span>`}</div></div><div class="mp">${wonFull(m.p)}</div></div>`}).join('')}
-   <div class="src">가격 출처: 행정안전부 착한가격업소 공공데이터${base?` · ${base} 기준`:''}<br>실제 가격과 다를 수 있어요. 다르면 알려 주세요.</div>
+   ${menus.map((m,mi)=>{const inn=m.p>=st.min&&m.p<=st.max;const diff=m.p>st.max?`+${wonFull(m.p-st.max)} 초과`:'최소 예산보다 저렴';
+     const when=m.d?m.d.slice(0,10).replace(/-/g,'.'):'';const cf=m.conf&&m.conf.cnt?` · ✓ ${m.conf.cnt}명 확인 (최근 ${m.conf.last.slice(5).replace('-','.')})`:'';
+     return `<div class="menu ${inn?'':'out'}"><div><div class="mn">${esc(m.n)}${inn?'<span class="badge in">예산 안</span>':`<span class="badge ov">${diff}</span>`}${m.src==='user'?'<span class="badge u">제보 가격</span>':''}</div>
+      <div class="ms">${SRC_NM[m.src]||''}${when?' '+when:''}${cf}</div><div class="cf"><button data-mi="${mi}">이 가격 맞아요</button></div></div><div class="mp">${wonFull(m.p)}</div></div>`}).join('')}
+   <div class="src">${s.src==='gov'?`가격 출처: 행정안전부 착한가격업소 공공데이터${base?` · ${base} 기준`:''}`:s.src==='chain'?`가격 출처: 본사 공개 가격${s.srcUrl?` · <a href="${esc(s.srcUrl)}" target="_blank" rel="noopener">출처</a>`:''} · 매장마다 다를 수 있어요 · 위치: 소상공인 상가(상권)정보`:'이용자가 제보하고 확인된 가게예요.'}<br>실제 가격과 다르면 '가격 제보'로 알려 주세요.</div>
    <div class="ext"><a href="https://map.naver.com/p/search/${q}" target="_blank" rel="noopener">네이버지도에서 보기</a><a href="https://map.kakao.com/link/search/${q}" target="_blank" rel="noopener">카카오맵에서 보기</a></div>
    <div class="rowbtn"><button class="btn sec2" id="rep">가격 제보</button><button class="btn sec2" id="rvw">리뷰 쓰기</button><button class="btn" id="ate">먹었어요</button></div>`;
   openSheet('detailSheet');
-  $('#rep').onclick=()=>{me.reports++;saveMe();toast('가격 제보 고마워요 · +50P');checkUnlock()};
+  $('#rep').onclick=()=>openPriceForm(s);
+  $('#detailBody').querySelectorAll('.cf button').forEach(b=>b.onclick=()=>confirmPrice(s,menus[+b.dataset.mi]));
   $('#rvw').onclick=()=>openReview(s);
   $('#ate').onclick=()=>{const m=s.best||menus[0];addFoot('visit',s,{m:m.n});closeSheets();toast(`내 수저가 ${s.n}에 다녀갔어요 · +20P`)};
 }
@@ -461,7 +488,7 @@ const counts=()=>({att:me.att.length,visit:me.feet.filter(f=>f.t==='visit').leng
 function prog(k){const c=counts(),n=SETS[k].need;const list=Object.entries(n).map(([key,v])=>({key,cur:Math.min(c[key],v),need:v}));return {done:list.every(x=>x.cur>=x.need),list}}
 const mySpoon=()=>me.spoon||(CH_IMG[st.char]?st.char:'s');
 function avatarSrc(k){k=k||mySpoon();return me.wear[k]&&prog(k).done?CH_IMG[k].outfit:CH_IMG[k].base}
-function points(){const c=counts();return c.att*10+c.visit*20+c.review*30+c.report*50}
+function points(){const c=counts();return c.att*10+c.visit*20+c.review*30+c.report*50+(me.confirms||0)*10}
 function renderAvaBtn(){$('#avaBtnImg').src=avatarSrc();$('#logoBtn').classList.toggle('has-new',Object.values(me.fresh).some(Boolean))}
 function checkUnlock(){
   let shown=false;
@@ -531,16 +558,14 @@ function renderMy(){
    <div class="card"><h3>내 수저 고르기 <small>지도·리뷰에 이 수저가 나와요</small></h3>
      <div class="spoons">${Object.keys(CH_IMG).map(sk=>`<button class="sp ${sk===k?'on':''}" data-k="${sk}"><img src="${avatarSrc(sk)}" alt="">${SP_NM[sk]}</button>`).join('')}</div></div>
    <div class="card"><h3>꾸미기 <small>활동하면 열려요</small></h3><div class="items" id="items">${items}</div>
-     <div class="note">프로토타입에서는 수저별 의상 세트만 있어요. 모자·옷·소품을 따로 갈아입히려면 파츠별 이미지가 필요해요.</div></div>
+</div>
    <div class="card"><h3>내 활동</h3>
      <div class="stats"><div><b>${c.att}</b>출석</div><div><b>${c.visit}</b>다녀감</div><div><b>${c.review}</b>리뷰</div><div><b>${c.report}</b>가격 제보</div></div>
      <div class="sec" style="margin:10px 0 2px">내 수저 발자국</div><div id="feet">${feet}</div></div>
-   <div class="card"><h3>체험용 <small>프로토타입 전용</small></h3>
-     <div class="rowbtn" style="margin-top:0"><button class="btn ghost" id="nextDay">다음 날로 넘기기</button><button class="btn ghost" id="resetMe">활동 초기화</button></div></div>`;
+   <div class="card"><h3>내 제보 <small>${SERVER?'확인 후 지도에 반영돼요':'서버 연결 전 · 이 기기에만 저장'}</small></h3>${(me.subs||[]).slice(-10).reverse().map(x=>`<div class="foot"><div class="t"><b>${esc(x.n)}</b><small>${x.k==='new_shop'?'새 가게':x.k==='price'?'가격 제보':'폐업 제보'}${x.m?' · '+esc(x.m):''}${x.p?' '+wonFull(x.p):''} · ${x.d.slice(5).replace('-','.')}</small></div><span class="srcchip">${x.local?'기기 저장':'검토 중'}</span></div>`).join('')||'<div class="desc" style="margin:0">아직 제보가 없어요. 지도 아래 ＋ 제보 버튼으로 가게를 알려 주세요.</div>'}</div>
+   `;
   $('#myBack').onclick=closeMy;
   $('#attBtn').onclick=()=>{if(!me.att.includes(kstDate())){me.att.push(kstDate());saveMe();toast('출석 완료 · +10P');checkUnlock();renderMy()}};
-  $('#nextDay').onclick=()=>{me.dayOff++;saveMe();renderMy();toast('하루 지난 걸로 바꿨어요 (체험용)')};
-  $('#resetMe').onclick=()=>{const sp=me.spoon;me={spoon:sp,wear:{},att:[],feet:[],reports:0,dayOff:0,seen:{},fresh:{}};saveMe();renderMy();renderAvaBtn();if(map)refresh();toast('활동 기록을 지웠어요')};
   $('#my').querySelector('.spoons').onclick=e=>{const b=e.target.closest('.sp');if(!b)return;me.spoon=b.dataset.k;saveMe();renderMy();renderAvaBtn();if(map)refresh()};
   $('#items').onclick=e=>{const it=e.target.closest('.item');if(!it)return;openPreview(it.dataset.k)};
   $('#feet').onclick=e=>{const f=e.target.closest('.foot');if(!f)return;const ft=me.feet[+f.dataset.j];closeMy();
@@ -568,6 +593,123 @@ function openPreview(sk){
   $('#pv').classList.add('on');
 }
 
+
+
+/* ---------- 이용자 제보 · 가격 확인 ---------- */
+const CFG=window.SUJEOMAP_CONFIG||{};
+const SB_URL=(CFG.SUPABASE_URL||'').replace(/\/$/,''), SB_KEY=CFG.SUPABASE_ANON_KEY||'';
+const SERVER=!!(SB_URL&&SB_KEY);
+function deviceId(){let d=null;try{d=localStorage.getItem('sujeomap_device')}catch(e){}if(!d){d=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2));try{localStorage.setItem('sujeomap_device',d)}catch(e){}}return d}
+async function submitReport(row){
+  row.device_id=deviceId();row.status=row.kind==='confirm'?'approved':'pending';
+  me.subs=me.subs||[];
+  if(row.kind!=='confirm'){me.subs.push({k:row.kind,n:row.shop_name,m:row.menu_name||'',p:row.price||null,d:kstDate(),local:!SERVER});saveMe()}
+  if(!SERVER)return{local:true};
+  const r=await fetch(SB_URL+'/rest/v1/submissions',{method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(row)});
+  if(!r.ok){const t=await r.text();throw new Error(t.includes('too many')?'오늘은 제보를 너무 많이 했어요. 내일 다시 해 주세요.':'제보를 보내지 못했어요. 잠시 후 다시 해 주세요.')}
+  return{local:false};
+}
+async function loadReports(){
+  if(!SERVER)return[];
+  try{const r=await fetch(SB_URL+'/rest/v1/public_reports?select=*&order=id.asc&limit=20000',{headers:{apikey:SB_KEY}});if(!r.ok)return[];return await r.json()}catch(e){return[]}
+}
+function applyReports(reps){
+  const closed=new Set();
+  reps.forEach(x=>{
+    const d=(x.created_at||'').slice(0,10);
+    if(x.kind==='closed'&&x.shop_ref){closed.add(x.shop_ref);return}
+    if(x.kind==='new_shop'){
+      const id=x.shop_ref||('u'+x.id);let s=BYID[id];
+      if(!s){if(x.lat==null||x.lng==null)return;s={id,n:x.shop_name,c:CATS[x.cat]?x.cat:'기타요식업',sido:'',sgg:'',addr:x.addr||'',lat:x.lat,lng:x.lng,menus:[],src:'user'};SHOPS.push(s);BYID[id]=s}
+      if(x.menu_name&&x.price)upsertMenu(s,x.menu_name,x.price,d);return}
+    const s=BYID[x.shop_ref];if(!s)return;
+    if(x.kind==='price'&&x.menu_name&&x.price)upsertMenu(s,x.menu_name,x.price,d);
+    if(x.kind==='confirm'&&x.menu_name){const m=s.menus.find(m=>m.n===x.menu_name);if(m){m.conf=m.conf||{cnt:0,last:''};m.conf.cnt++;if(d>m.conf.last)m.conf.last=d}}
+  });
+  if(closed.size){SHOPS=SHOPS.filter(s=>!closed.has(s.id));closed.forEach(id=>delete BYID[id])}
+}
+function upsertMenu(s,name,price,d){const m=s.menus.find(m=>m.n===name);if(m){if(!m.d||d>=m.d){m.p=price;m.d=d;m.src='user'}}else s.menus.push({n:name,p:price,d,src:'user'})}
+const SRC_NM={gov:'공공데이터',chain:'본사 가격',user:'이용자 제보'};
+function confKey(s,m){return 'c:'+s.id+':'+m.n+':'+kstDate()}
+async function confirmPrice(s,m){
+  let done={};try{done=JSON.parse(localStorage.getItem('sujeomap_conf')||'{}')}catch(e){}
+  if(done[confKey(s,m)]){toast('오늘 이미 확인했어요');return}
+  try{await submitReport({kind:'confirm',shop_ref:s.id,shop_name:s.n,menu_name:m.n,price:m.p,lat:s.lat,lng:s.lng})}catch(e){toast(e.message);return}
+  done[confKey(s,m)]=1;try{localStorage.setItem('sujeomap_conf',JSON.stringify(done))}catch(e){}
+  m.conf=m.conf||{cnt:0,last:''};m.conf.cnt++;m.conf.last=kstDate();me.confirms=(me.confirms||0)+1;saveMe();
+  toast(SERVER?'가격 확인 고마워요 · +10P':'확인했어요 · +10P (서버 연결 전이라 이 기기에만 저장)');openDetail(s);checkUnlock();
+}
+function openPriceForm(s){
+  const opts=s.menus.map((m,i)=>`<option value="${i}">${esc(m.n)} (지금 ${wonFull(m.p)})</option>`).join('');
+  $('#priceBody').innerHTML=`<h2>가격 제보</h2><p class="desc">${esc(s.n)} · 실제 가격을 알려주면 확인 후 반영돼요 (+50P)</p>
+   <label class="fl">메뉴</label><select id="pfMenu">${opts}<option value="new">+ 새 메뉴</option></select>
+   <input id="pfNew" class="fi" placeholder="새 메뉴 이름" style="display:none" maxlength="40">
+   <label class="fl">실제 가격(원)</label><input id="pfPrice" class="fi" type="number" inputmode="numeric" placeholder="예: 8000" min="500" max="100000">
+   <label class="fl">메모 (선택)</label><input id="pfNote" class="fi" maxlength="200" placeholder="예: 점심만 이 가격이에요">
+   <div class="rowbtn"><button class="btn" id="pfSend">제보하기</button></div>
+   <button class="link" id="pfClosed">이 가게가 문을 닫았어요</button>`;
+  openSheet('priceSheet');
+  $('#pfMenu').onchange=()=>{$('#pfNew').style.display=$('#pfMenu').value==='new'?'block':'none'};
+  $('#pfSend').onclick=async()=>{
+    const isNew=$('#pfMenu').value==='new';const name=isNew?$('#pfNew').value.trim():s.menus[+$('#pfMenu').value].n;const price=+$('#pfPrice').value;
+    if(!name){toast('메뉴 이름을 적어 주세요');return}if(!(price>=500&&price<=100000)){toast('가격을 확인해 주세요 (500원 ~ 10만 원)');return}
+    try{const r=await submitReport({kind:'price',shop_ref:s.id,shop_name:s.n,addr:s.addr,lat:s.lat,lng:s.lng,cat:s.c,menu_name:name,price,note:$('#pfNote').value.trim()||null});
+      me.reports++;saveMe();closeSheets();toast(r.local?'제보를 저장했어요 · 서버 연결 전이라 이 기기에만 있어요':'제보 고마워요 · 확인 후 반영돼요 (+50P)');checkUnlock()}catch(e){toast(e.message)}};
+  let armed=false;$('#pfClosed').onclick=async()=>{if(!armed){armed=true;$('#pfClosed').textContent='정말 문을 닫았나요? 한 번 더 누르면 제보돼요';return}
+    try{await submitReport({kind:'closed',shop_ref:s.id,shop_name:s.n,lat:s.lat,lng:s.lng});closeSheets();toast('폐업 제보 고마워요 · 확인 후 지도에서 빠져요')}catch(e){toast(e.message)}};
+}
+
+/* 새 가게 제보: 상가정보에서 찾기 → 없으면 지도에서 위치 고르기 */
+let SBIZ_INDEX=null; const SBIZ_CACHE={};
+async function sbizIndex(){if(SBIZ_INDEX!==null)return SBIZ_INDEX;try{const r=await fetch('data/sbiz/index.json',{cache:'no-cache'});SBIZ_INDEX=r.ok?await r.json():{files:[]}}catch(e){SBIZ_INDEX={files:[]}}return SBIZ_INDEX}
+async function sbizNear(lng,lat){
+  const idx=await sbizIndex();if(!idx.files||!idx.files.length)return[];
+  const inside=idx.files.filter(f=>lng>=f.bbox[0]-.01&&lng<=f.bbox[2]+.01&&lat>=f.bbox[1]-.01&&lat<=f.bbox[3]+.01);
+  const files=(inside.length?inside:[...idx.files].sort((a,b)=>Math.hypot((a.bbox[0]+a.bbox[2])/2-lng,(a.bbox[1]+a.bbox[3])/2-lat)-Math.hypot((b.bbox[0]+b.bbox[2])/2-lng,(b.bbox[1]+b.bbox[3])/2-lat))).slice(0,4);
+  const out=[];for(const f of files){if(!SBIZ_CACHE[f.path]){try{const r=await fetch(f.path);SBIZ_CACHE[f.path]=r.ok?(await r.json()).stores:[]}catch(e){SBIZ_CACHE[f.path]=[]}}SBIZ_CACHE[f.path].forEach(x=>out.push({id:x[0],n:x[1],br:x[2],c:x[3],t:x[4],addr:x[5],lng:x[6],lat:x[7],gu:f.nm}))}
+  return out;
+}
+const km=(a,b,c,d)=>{const dx=(c-a)*88.2,dy=(d-b)*111;return Math.sqrt(dx*dx+dy*dy)};
+const fmtD=k=>k<1?Math.round(k*1000)+'m':k.toFixed(1)+'km';
+function openNewShop(){
+  $('#reportBody').innerHTML=`<h2>가게 제보</h2><p class="desc">지도에 없는 가성비 가게를 알려 주세요. 확인 후 지도에 올라가요 (+50P)</p>
+   <input id="rsQ" class="fi" placeholder="가게 이름으로 찾기 (지금 지도 근처)" autocomplete="off">
+   <div id="rsList"><div class="desc" style="margin:10px 0">이름을 두 글자 이상 입력해 보세요.</div></div>
+   <button class="btn sec2" id="rsPick" style="width:100%;margin-top:10px">목록에 없어요 · 지도에서 위치 고르기</button>`;
+  openSheet('reportSheet');
+  const c=map.getCenter();let near=null;
+  sbizNear(c.lng,c.lat).then(r=>{near=r;if(!r.length)$('#rsList').innerHTML='<div class="desc" style="margin:10px 0">이 지역 가게 목록이 아직 없어요. 지도에서 위치를 골라 주세요.</div>'});
+  let tmr;$('#rsQ').oninput=()=>{clearTimeout(tmr);tmr=setTimeout(()=>{
+    const q=$('#rsQ').value.replace(/\s+/g,'');if(q.length<2)return;
+    const onMap=SHOPS.filter(s=>s.n.replace(/\s+/g,'').includes(q)&&km(c.lng,c.lat,s.lng,s.lat)<5).slice(0,5);
+    const cand=(near||[]).filter(x=>(x.n+x.br).replace(/\s+/g,'').includes(q)).map(x=>(x.km=km(c.lng,c.lat,x.lng,x.lat),x)).sort((a,b)=>a.km-b.km).slice(0,20);
+    $('#rsList').innerHTML=(onMap.length?'<div class="sec">이미 지도에 있어요</div>'+onMap.map(s=>`<div class="li" data-on="${s.id}"><div class="mid"><div class="nm">${esc(s.n)}</div><div class="mt">${esc(s.addr)}</div></div><div class="pr" style="font-size:12px">가격 제보 ›</div></div>`).join(''):'')+
+      (cand.length?'<div class="sec">가게 목록 (소상공인 상가정보)</div>'+cand.map((x,i)=>`<div class="li" data-i="${i}"><div class="mid"><div class="nm">${esc(x.n)}${x.br?`<small>${esc(x.br)}</small>`:''}</div><div class="mt">${esc(x.t)} · ${esc(x.addr)}</div></div><div class="pr" style="font-size:12px;color:var(--sub)">${fmtD(x.km)}</div></div>`).join(''):'')||'<div class="desc" style="margin:10px 0">찾는 가게가 없어요. 지도에서 위치를 골라 주세요.</div>';
+    $('#rsList').onclick=e=>{const li=e.target.closest('.li');if(!li)return;if(li.dataset.on){const s=BYID[li.dataset.on];closeSheets();setTimeout(()=>openPriceForm(s),50);return}
+      const x=cand[+li.dataset.i];newShopForm({shop_ref:'sb_'+x.id,name:x.n+(x.br?' '+x.br:''),cat:x.c,addr:x.addr,lat:x.lat,lng:x.lng})};
+  },200)};
+  $('#rsPick').onclick=()=>{closeSheets();$('#pick').classList.add('on')};
+}
+$('#pickOk').onclick=()=>{const c=map.getCenter();$('#pick').classList.remove('on');newShopForm({shop_ref:null,name:'',cat:'한식',addr:'',lat:+c.lat.toFixed(6),lng:+c.lng.toFixed(6)})};
+$('#pickNo').onclick=()=>$('#pick').classList.remove('on');
+function newShopForm(p){
+  $('#reportBody').innerHTML=`<h2>가게 제보</h2><p class="desc">${p.shop_ref?'소상공인 상가정보에서 찾은 가게예요.':'고른 위치에 가게를 등록해요.'} 대표 메뉴 하나와 가격을 알려 주세요.</p>
+   <label class="fl">가게 이름</label><input id="nfName" class="fi" maxlength="60" value="${esc(p.name)}">
+   <label class="fl">업종</label><select id="nfCat">${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===p.cat?'selected':''}>${v[0]}</option>`).join('')}</select>
+   <label class="fl">주소 (선택)</label><input id="nfAddr" class="fi" maxlength="120" value="${esc(p.addr)}">
+   <label class="fl">메뉴</label><input id="nfMenu" class="fi" maxlength="40" placeholder="예: 김치찌개">
+   <label class="fl">가격(원)</label><input id="nfPrice" class="fi" type="number" inputmode="numeric" placeholder="예: 7000">
+   <label class="fl">메모 (선택)</label><input id="nfNote" class="fi" maxlength="200" placeholder="예: 외부인도 이용 가능한 구내식당">
+   <div class="rowbtn"><button class="btn" id="nfSend">제보하기</button></div>`;
+  openSheet('reportSheet');
+  $('#nfSend').onclick=async()=>{
+    const name=$('#nfName').value.trim(),menu=$('#nfMenu').value.trim(),price=+$('#nfPrice').value;
+    if(!name||!menu){toast('가게 이름과 메뉴를 적어 주세요');return}if(!(price>=500&&price<=100000)){toast('가격을 확인해 주세요 (500원 ~ 10만 원)');return}
+    if(price>MAX_BUDGET)toast('3만 원 넘는 메뉴는 지도에 안 보여요. 그래도 제보는 받아요.');
+    try{const r=await submitReport({kind:'new_shop',shop_ref:p.shop_ref,shop_name:name,addr:$('#nfAddr').value.trim()||null,lat:p.lat,lng:p.lng,cat:$('#nfCat').value,menu_name:menu,price,note:$('#nfNote').value.trim()||null});
+      me.reports++;saveMe();closeSheets();toast(r.local?'제보를 저장했어요 · 서버 연결 전이라 이 기기에만 있어요':'제보 고마워요 · 확인 후 지도에 올라가요 (+50P)');checkUnlock()}catch(e){toast(e.message)}};
+}
+$('#reportBtn').onclick=()=>{if(!map){toast('지도를 먼저 열어 주세요');return}openNewShop()};
 
 
 /* ---------- boot ---------- */
