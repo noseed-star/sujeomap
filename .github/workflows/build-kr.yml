@@ -30,7 +30,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: 한국 데이터 만들기
-        run: python scripts/build_kr.py
+        run: python -u scripts/build_kr.py
         env:
           JUSO_SEARCH_KEY: ${{ secrets.JUSO_SEARCH_KEY }}
           JUSO_COORD_KEY: ${{ secrets.JUSO_COORD_KEY }}
