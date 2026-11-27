@@ -254,7 +254,7 @@ textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px
   <div class="banner" id="banner"></div>
 
   <div class="bar">
-    <button class="pill loc" id="locBtn" aria-label="내 위치">◎</button>
+    <button class="pill loc" id="locBtn" aria-label="내 위치"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#20245a" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>
     <button class="pill rep" id="reportBtn">＋ 제보</button>
     <button class="pill dark" id="listBtn">이 지역 목록</button>
   </div>
@@ -400,9 +400,25 @@ function refresh(){
 $('#catChips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;st.cat=b.dataset.c;refresh()};
 $('#locBtn').onclick=()=>{
   if(!navigator.geolocation){toast('이 브라우저는 위치를 지원하지 않아요');return}
-  navigator.geolocation.getCurrentPosition(p=>{const ll=[p.coords.longitude,p.coords.latitude];
+  toast('내 위치를 찾는 중…');
+  let best=null,done=false;
+  const show=(p,final)=>{
+    const ll=[p.coords.longitude,p.coords.latitude],acc=Math.round(p.coords.accuracy||0);
     if(!meMarker){const el=document.createElement('div');el.className='me-dot';meMarker=new maplibregl.Marker({element:el})}
-    meMarker.setLngLat(ll).addTo(map);map.flyTo({center:ll,zoom:15});st.here=ll},()=>toast('위치 권한을 허용하면 내 주변을 보여드려요'),{enableHighAccuracy:true,timeout:8000});
+    meMarker.setLngLat(ll).addTo(map);st.here=ll;
+    map.flyTo({center:ll,zoom:acc>3000?13:acc>800?14:15.5});
+    if(final){
+      if(acc>1000)toast(`위치가 약 ${(acc/1000).toFixed(1)}km 어긋날 수 있어요 · PC는 와이파이·IP로 위치를 짐작해요. 휴대폰에서는 정확해요`);
+      else toast(`내 위치로 왔어요 (오차 약 ${acc}m)`);
+    }
+  };
+  const id=navigator.geolocation.watchPosition(p=>{
+    if(!best||p.coords.accuracy<best.coords.accuracy){best=p;show(p,false)}
+    if(p.coords.accuracy<=50&&!done){done=true;navigator.geolocation.clearWatch(id);show(p,true)}
+  },err=>{if(done)return;done=true;navigator.geolocation.clearWatch(id);
+    toast(err.code===1?'위치 권한이 꺼져 있어요 · 주소창 왼쪽 자물쇠 아이콘에서 위치를 허용해 주세요':'위치를 찾지 못했어요 · 잠시 후 다시 눌러 주세요')},
+  {enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  setTimeout(()=>{if(!done){done=true;navigator.geolocation.clearWatch(id);if(best)show(best,true)}},8000);
 };
 
 /* ---------- sheets ---------- */
