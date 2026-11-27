@@ -10,7 +10,10 @@
 - JUSO_COORD_KEY 가 없으면 2)까지만 하고 끝내요. (좌표 키 발급 전에도 미리 돌려둘 수 있어요)
 - SIDO 환경변수로 이번에 처리할 시도를 고를 수 있어요. (예: 서울특별시 / 전국)
 
-필요한 환경변수: JUSO_SEARCH_KEY, (선택) JUSO_COORD_KEY, (선택) SIDO, (선택) LIMIT
+착한가격업소 데이터는 공공데이터포털 오픈 API에서 가장 최근 버전을 자동으로 가져와요.
+(DATA_GO_KR_KEY 가 없을 때만 예전처럼 data/raw/*.csv 를 읽어요)
+
+필요한 환경변수: DATA_GO_KR_KEY, JUSO_SEARCH_KEY, (선택) JUSO_COORD_KEY, (선택) SIDO, (선택) LIMIT
 """
 import csv
 import glob
@@ -40,6 +43,8 @@ MENU_ALIAS = {"자장면": "짜장면", "쟁반자장": "쟁반짜장", "간짜�
 SLEEP = 0.12                 # 호출 간격(초) - 너무 빠르면 E0007
 KST = timezone(timedelta(hours=9))
 
+DATA_KEY = os.environ.get("DATA_GO_KR_KEY", "").strip()
+GOOD_PRICE_NS = "3045247/v1"   # 공공데이터포털 '행정안전부_착한가격업소 현황' 오픈 API
 SEARCH_KEY = os.environ.get("JUSO_SEARCH_KEY", "").strip()
 COORD_KEY = os.environ.get("JUSO_COORD_KEY", "").strip()
 SIDO = os.environ.get("SIDO", "서울특별시").strip() or "서울특별시"
@@ -72,6 +77,37 @@ def read_csv():
     return rows, base, os.path.basename(path)
 
 
+def read_api():
+    """착한가격업소 오픈 API: 새 파일이 올라올 때마다 호출 주소(uddi)가 바뀌어서, 목록에서 가장 최근 것을 골라요."""
+    spec = requests.get("https://infuser.odcloud.kr/oas/docs", params={"namespace": GOOD_PRICE_NS}, timeout=30).json()
+    best = None
+    for path, v in spec.get("paths", {}).items():
+        summary = v.get("get", {}).get("summary", "")
+        m = re.search(r"(20\d{6})", summary)
+        if m and (best is None or m.group(1) > best[1]):
+            best = (path, m.group(1), summary)
+    if not best:
+        sys.exit("착한가격업소 API 목록을 읽지 못했어요.")
+    path, ymd, summary = best
+    url = "https://api.odcloud.kr/api" + path
+    rows, page = [], 1
+    while True:
+        r = requests.get(url, params={"serviceKey": DATA_KEY, "page": page, "perPage": 1000, "returnType": "JSON"}, timeout=60)
+        if r.status_code in (401, 403):
+            sys.exit("공공데이터포털 인증키가 맞지 않거나, '행정안전부_착한가격업소 현황' 오픈 API 활용신청이 아직 안 됐어요.\n" + r.text[:200])
+        r.raise_for_status()
+        j = r.json()
+        data = j.get("data") or []
+        rows.extend(data)
+        if not data or len(rows) >= int(j.get("totalCount") or 0):
+            break
+        page += 1
+        time.sleep(0.2)
+    base = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
+    print(f"API: {summary} · {len(rows):,}행 · 기준일 {base}", flush=True)
+    return rows, base, summary
+
+
 def to_price(v):
     d = re.sub(r"[^0-9]", "", v or "")
     return int(d) if d else 0
@@ -95,7 +131,7 @@ def addr_key(addr):
 def shops_from_rows(rows):
     shops = []
     for i, r in enumerate(rows):
-        r = {k.strip().lstrip("﻿"): (v or "").strip() for k, v in r.items() if k}
+        r = {k.strip().lstrip("﻿"): ("" if v is None else str(v)).strip() for k, v in r.items() if k}
         if r.get("업종") not in FOOD_TYPES or not r.get("업소명") or not r.get("주소"):
             continue
         menus = []
@@ -191,7 +227,7 @@ def preflight():
 def main():
     if not SEARCH_KEY:
         sys.exit("JUSO_SEARCH_KEY 가 없어요. 저장소 Settings → Secrets 에 등록해 주세요.")
-    rows, base, fname = read_csv()
+    rows, base, fname = read_api() if DATA_KEY else read_csv()
     shops = shops_from_rows(rows)
     print(f"식당 + 3만 원 이하 메뉴 보유: {len(shops):,}곳")
 
